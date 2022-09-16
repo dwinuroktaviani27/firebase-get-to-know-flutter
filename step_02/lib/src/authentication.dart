@@ -12,6 +12,7 @@ enum ApplicationLoginState {
 
 class Authentication extends StatelessWidget {
   const Authentication({
+    Key? key,
     required this.loginState,
     required this.email,
     required this.startLoginFlow,
@@ -20,8 +21,7 @@ class Authentication extends StatelessWidget {
     required this.cancelRegistration,
     required this.registerAccount,
     required this.signOut,
-    super.key,
-  });
+  }) : super(key: key);
 
   final ApplicationLoginState loginState;
   final String? email;
@@ -152,7 +152,7 @@ class Authentication extends StatelessWidget {
 }
 
 class EmailForm extends StatefulWidget {
-  const EmailForm({required this.callback, super.key});
+  const EmailForm({Key? key, required this.callback}) : super(key: key);
   final void Function(String email) callback;
   @override
   State<EmailForm> createState() => _EmailFormState();
@@ -166,7 +166,7 @@ class _EmailFormState extends State<EmailForm> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const Header('Sign in with email'),
+        const Header(heading: 'Sign in with email'),
         Padding(
           padding: const EdgeInsets.all(8.0),
           child: Form(
@@ -217,11 +217,11 @@ class _EmailFormState extends State<EmailForm> {
 
 class RegisterForm extends StatefulWidget {
   const RegisterForm({
+    Key? key,
     required this.registerAccount,
     required this.cancel,
     required this.email,
-    super.key,
-  });
+  }) : super(key: key);
   final String email;
   final void Function(String email, String displayName, String password)
       registerAccount;
@@ -246,7 +246,7 @@ class _RegisterFormState extends State<RegisterForm> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const Header('Create account'),
+        const Header(heading: 'Create account'),
         Padding(
           padding: const EdgeInsets.all(8.0),
           child: Form(
@@ -336,11 +336,8 @@ class _RegisterFormState extends State<RegisterForm> {
 }
 
 class PasswordForm extends StatefulWidget {
-  const PasswordForm({
-    required this.login,
-    required this.email,
-    super.key,
-  });
+  const PasswordForm({Key? key, required this.login, required this.email})
+      : super(key: key);
   final String email;
   final void Function(String email, String password) login;
   @override
@@ -362,7 +359,7 @@ class _PasswordFormState extends State<PasswordForm> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const Header('Sign in'),
+        const Header(heading: 'Sign In'),
         Padding(
           padding: const EdgeInsets.all(8.0),
           child: Form(
