@@ -6,3 +6,6 @@
 
 ## Step 05 - Read messages
 ![Step05](step_02/images/step_05.gif)
+
+## Step 09 - Record an attendee's RSVP status
+![Step09](step_02/images/prak9.gif)

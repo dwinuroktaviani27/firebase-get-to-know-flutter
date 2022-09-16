@@ -1,21 +1,21 @@
-import 'dart:async'; // new
+import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // new
-import 'package:firebase_core/firebase_core.dart'; // new
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart'; // new
+import 'package:provider/provider.dart';
 
-import 'firebase_options.dart'; // new
-import 'src/authentication.dart'; // new
+import 'firebase_options.dart';
+import 'src/authentication.dart';
 import 'src/widgets.dart';
 
 void main() {
   runApp(
     ChangeNotifierProvider(
       create: (context) => ApplicationState(),
-      builder: (context, _) => App(),
+      builder: (context, _) => const App(),
     ),
   );
 }
@@ -55,13 +55,9 @@ class HomePage extends StatelessWidget {
         children: <Widget>[
           Image.asset('assets/codelab.png'),
           const SizedBox(height: 8),
-          const IconAndDetail(
-            icon: Icons.calendar_today,
-            detail: 'October 30',
-          ),
+          const IconAndDetail(icon: Icons.calendar_today, detail: 'October 30'),
           const IconAndDetail(
               icon: Icons.location_city, detail: 'San Francisco'),
-          // Add from here
           Consumer<ApplicationState>(
             builder: (context, appState, _) => Authentication(
               email: appState.email,
@@ -74,7 +70,6 @@ class HomePage extends StatelessWidget {
               signOut: appState.signOut,
             ),
           ),
-          // to here
           const Divider(
             height: 8,
             thickness: 1,
@@ -90,10 +85,18 @@ class HomePage extends StatelessWidget {
             builder: (context, appState, _) => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (appState.attendees >= 2)
+                  Paragraph(content: '${appState.attendees} people going')
+                else if (appState.attendees == 1)
+                  const Paragraph(content: '1 person going')
+                else
+                  const Paragraph(content: 'No one going'),
                 if (appState.loginState == ApplicationLoginState.loggedIn) ...[
-                  const Header(
-                    heading: 'Discussion',
+                  YesNoSelection(
+                    state: appState.attending,
+                    onSelection: (attending) => appState.attending = attending,
                   ),
+                  const Header(heading: 'Discussion'),
                   GuestBook(
                     addMessage: (message) =>
                         appState.addMessageToGuestBook(message),
@@ -119,6 +122,15 @@ class ApplicationState extends ChangeNotifier {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
+    FirebaseFirestore.instance
+        .collection('attendees')
+        .where('attending', isEqualTo: true)
+        .snapshots()
+        .listen((snapshot) {
+      _attendees = snapshot.docs.length;
+      notifyListeners();
+    });
+
     FirebaseAuth.instance.userChanges().listen((user) {
       if (user != null) {
         _loginState = ApplicationLoginState.loggedIn;
@@ -138,27 +150,29 @@ class ApplicationState extends ChangeNotifier {
           }
           notifyListeners();
         });
+        _attendingSubscription = FirebaseFirestore.instance
+            .collection('attendees')
+            .doc(user.uid)
+            .snapshots()
+            .listen((snapshot) {
+          if (snapshot.data() != null) {
+            if (snapshot.data()!['attending'] as bool) {
+              _attending = Attending.yes;
+            } else {
+              _attending = Attending.no;
+            }
+          } else {
+            _attending = Attending.unknown;
+          }
+          notifyListeners();
+        });
       } else {
         _loginState = ApplicationLoginState.loggedOut;
         _guestBookMessages = [];
         _guestBookSubscription?.cancel();
+        _attendingSubscription?.cancel();
       }
       notifyListeners();
-    });
-  }
-
-  Future<DocumentReference> addMessageToGuestBook(String message) {
-    if (_loginState != ApplicationLoginState.loggedIn) {
-      throw Exception('Must be logged in');
-    }
-
-    return FirebaseFirestore.instance
-        .collection('guestbook')
-        .add(<String, dynamic>{
-      'text': message,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'name': FirebaseAuth.instance.currentUser!.displayName,
-      'userId': FirebaseAuth.instance.currentUser!.uid,
     });
   }
 
@@ -171,6 +185,23 @@ class ApplicationState extends ChangeNotifier {
   StreamSubscription<QuerySnapshot>? _guestBookSubscription;
   List<GuestBookMessage> _guestBookMessages = [];
   List<GuestBookMessage> get guestBookMessages => _guestBookMessages;
+
+  int _attendees = 0;
+  int get attendees => _attendees;
+
+  Attending _attending = Attending.unknown;
+  StreamSubscription<DocumentSnapshot>? _attendingSubscription;
+  Attending get attending => _attending;
+  set attending(Attending attending) {
+    final userDoc = FirebaseFirestore.instance
+        .collection('attendees')
+        .doc(FirebaseAuth.instance.currentUser!.uid);
+    if (attending == Attending.yes) {
+      userDoc.set(<String, dynamic>{'attending': true});
+    } else {
+      userDoc.set(<String, dynamic>{'attending': false});
+    }
+  }
 
   void startLoginFlow() {
     _loginState = ApplicationLoginState.emailAddress;
@@ -233,15 +264,42 @@ class ApplicationState extends ChangeNotifier {
   void signOut() {
     FirebaseAuth.instance.signOut();
   }
+
+  Future<DocumentReference> addMessageToGuestBook(String message) {
+    if (_loginState != ApplicationLoginState.loggedIn) {
+      throw Exception('Must be logged in');
+    }
+
+    return FirebaseFirestore.instance
+        .collection('guestbook')
+        .add(<String, dynamic>{
+      'text': message,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'name': FirebaseAuth.instance.currentUser!.displayName,
+      'userId': FirebaseAuth.instance.currentUser!.uid,
+    });
+  }
 }
 
+class GuestBookMessage {
+  GuestBookMessage({required this.name, required this.message});
+  final String name;
+  final String message;
+}
+
+enum Attending { yes, no, unknown }
+
 class GuestBook extends StatefulWidget {
-  const GuestBook({required this.addMessage, required this.messages});
+  const GuestBook({
+    Key? key,
+    required this.addMessage,
+    required this.messages,
+  }) : super(key: key);
   final FutureOr<void> Function(String message) addMessage;
-  final List<GuestBookMessage> messages; // new
+  final List<GuestBookMessage> messages;
 
   @override
-  _GuestBookState createState() => _GuestBookState();
+  State<GuestBook> createState() => _GuestBookState();
 }
 
 class _GuestBookState extends State<GuestBook> {
@@ -302,8 +360,71 @@ class _GuestBookState extends State<GuestBook> {
   }
 }
 
-class GuestBookMessage {
-  GuestBookMessage({required this.name, required this.message});
-  final String name;
-  final String message;
+class YesNoSelection extends StatelessWidget {
+  const YesNoSelection({
+    Key? key,
+    required this.state,
+    required this.onSelection,
+  }) : super(key: key);
+  final Attending state;
+  final void Function(Attending selection) onSelection;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (state) {
+      case Attending.yes:
+        return Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Row(
+            children: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(elevation: 0),
+                onPressed: () => onSelection(Attending.yes),
+                child: const Text('YES'),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: () => onSelection(Attending.no),
+                child: const Text('NO'),
+              ),
+            ],
+          ),
+        );
+      case Attending.no:
+        return Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Row(
+            children: [
+              TextButton(
+                onPressed: () => onSelection(Attending.yes),
+                child: const Text('YES'),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(elevation: 0),
+                onPressed: () => onSelection(Attending.no),
+                child: const Text('NO'),
+              ),
+            ],
+          ),
+        );
+      default:
+        return Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Row(
+            children: [
+              StyledButton(
+                onPressed: () => onSelection(Attending.yes),
+                child: const Text('YES'),
+              ),
+              const SizedBox(width: 8),
+              StyledButton(
+                onPressed: () => onSelection(Attending.no),
+                child: const Text('NO'),
+              ),
+            ],
+          ),
+        );
+    }
+  }
 }
